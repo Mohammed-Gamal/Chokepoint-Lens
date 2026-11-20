@@ -239,10 +239,9 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "bokeh" },
+    { name = "cartopy" },
     { name = "geoviews" },
     { name = "holoviews" },
-    { name = "hvplot" },
-    { name = "numpy" },
     { name = "pandas" },
     { name = "panel" },
     { name = "pyarrow" },
@@ -252,10 +251,9 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "bokeh", specifier = ">=3.4" },
+    { name = "cartopy", specifier = ">=0.22" },
     { name = "geoviews", specifier = ">=1.11" },
     { name = "holoviews", specifier = ">=1.18" },
-    { name = "hvplot", specifier = ">=0.9" },
-    { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "panel", specifier = ">=1.4" },
     { name = "pyarrow", specifier = ">=15.0" },
@@ -471,25 +469,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b7/f3/34e286709566b7cae1d698c718db7d4f6b8d91f3838a4d3bf42fae73f56e/holoviews-1.23.2.tar.gz", hash = "sha256:e0c511e6d4db4f370f2550d363c23b70d7ee4f2310f1c7995b0f89cacf1eb107", size = 5550868, upload-time = "2026-08-24T11:14:24.63Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7a/ac/ff11421409f976932dc058e89f7c885006a4b8904942186cebf0c7b9b052/holoviews-1.23.2-py3-none-any.whl", hash = "sha256:0742d9d1dbc645611f04f8b948558febf556f712872a1e5bc96c37790722e6ca", size = 5996936, upload-time = "2026-08-24T11:14:22.644Z" },
-]
-
-[[package]]
-name = "hvplot"
-version = "0.13.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "bokeh" },
-    { name = "colorcet" },
-    { name = "holoviews" },
-    { name = "numpy" },
-    { name = "packaging" },
-    { name = "pandas" },
-    { name = "panel" },
-    { name = "param" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/96/a6/e5a16e04776edfc7561990a5bc99d7e571590a123474588b7d266f7fc9c4/hvplot-0.13.0.tar.gz", hash = "sha256:e10457d215da484283e5cbf92b0d4655fde4efb04700785984de593f7e679885", size = 8048417, upload-time = "2026-11-10T10:14:35.002Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/aa/e0/a9208a596e2ddd1a9d97d0e120fba69144cbf006509732f5f18f58563cff/hvplot-0.13.0-py3-none-any.whl", hash = "sha256:32f08b55ee57459a8acdbfaab3604be8fdc4ddbf8ae88401a2d0e8316e862835", size = 251727, upload-time = "2026-11-10T10:14:32.751Z" },
 ]
 
 [[package]]

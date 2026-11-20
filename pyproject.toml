@@ -8,19 +8,21 @@ authors = [
 ]
 requires-python = ">=3.12"
 
+# Every package here is either imported by src/, or required at runtime by
+# something that is. Nothing is listed "just in case" -- see README.md for
+# which module uses what.
 dependencies = [
-    # --- data handling ---
-    "pandas>=2.2",
-    "numpy>=1.26",
-    "pyarrow>=15.0",       # lets pandas read/write .parquet files
-    "requests>=2.31",      # talks to the PortWatch API
+    # --- imported directly ---
+    "pandas>=2.2",         # every table in the project
+    "requests>=2.31",      # talks to the PortWatch API (fetch.py)
+    "holoviews>=1.18",     # every chart object (PyViz)
+    "geoviews>=1.11",      # the world map and its basemap (PyViz)
+    "cartopy>=0.22",       # the coordinate system the map points use
+    "panel>=1.4",          # dashboard layout, widgets, web server (PyViz)
 
-    # --- visualisation (all listed on PyViz.org) ---
-    "holoviews>=1.18",     # the core library: charts + linked selections
-    "hvplot>=0.9",         # shorthand for charts straight off a dataframe
-    "geoviews>=1.11",      # the world map with chokepoints on it
-    "panel>=1.4",          # dashboard layout, widgets, and the web server
-    "bokeh>=3.4",          # the engine holoviews draws through
+    # --- required at runtime, not imported by us ---
+    "pyarrow>=15.0",       # pandas uses it to read and write .parquet
+    "bokeh>=3.4",          # the renderer holoviews draws through
 ]
 
 [tool.uv]

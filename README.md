@@ -1,7 +1,9 @@
 # Chokepoint Lens
 
 **Visualization and Visual Analytics — project work**
-**Author:** Elfadel Mohamed · **Date:** November 2026
+**Author:** Elfadel Mohamed  
+**Date:** November 2026
+
 
 An interactive dashboard for reading daily ship traffic through the world's
 maritime chokepoints against a **seasonal baseline** — what was normal for that
@@ -69,7 +71,9 @@ Basemap tiles are © Esri, HERE, Garmin, OpenStreetMap contributors.
 
 ## Running it
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/). The code needs Python 3.12 or
+later (`pyproject.toml`); `.python-version` pins the interpreter uv actually
+uses to 3.14, which is what the committed `uv.lock` was resolved against.
 
 ```bash
 uv sync                                 # install dependencies
@@ -86,14 +90,19 @@ uv run python src/charts.py              # writes docs/preview.html
 uv run python src/design_alternatives.py # writes docs/mockups/alternatives.html
 ```
 
-That file has BokehJS embedded, so it opens with no internet connection. Only
-the map tiles need a network.
+Both files have BokehJS embedded, so they open with no internet connection at
+all. Only the map's basemap tiles need a network.
 
 ---
 
 ## Structure
 
 ```
+pyproject.toml      dependencies and uv configuration (source of truth)
+requirements.txt    the same list, for installing without uv
+uv.lock             exact resolved versions
+.python-version     interpreter pin (3.14)
+
 src/
 ├── fetch.py        paginated ArcGIS client; caches raw JSON + writes the manifest
 ├── prepare.py      dates, type conversion, validation, derived columns, QC report
@@ -116,11 +125,68 @@ Charts are plain functions returning objects, so the same code runs in a
 notebook during development and in the dashboard in production — there is no
 copy-paste between prototype and product.
 
+### What each module reads and writes
+
+The pipeline runs top to bottom: each step consumes what the one above it
+produced, so they can be re-run individually without redoing the whole chain.
+
+| Module | Reads | Writes | Run with |
+|---|---|---|---|
+| `fetch.py` | the PortWatch API | `data/raw/*.json`, `data/raw/_manifest.json` | `python src/fetch.py all` |
+| `prepare.py` | `data/raw/*.json` | `chokepoints_daily/_long/_meta.parquet`, `ports_daily.parquet`, `docs/data_quality.md` | `python src/prepare.py` |
+| `metrics.py` | the parquet tables above | `chokepoints_metrics.parquet`, `suez_substitution.parquet`, `port_changes.parquet`, `canal_vs_ports.parquet` | `python src/metrics.py --summary` |
+| `charts.py` | the processed tables | `docs/preview.html` | `python src/charts.py` |
+| `app.py` | the processed tables | the running dashboard | `panel serve src/app.py --show` |
+| `design_alternatives.py` | the processed tables | `docs/mockups/alternatives.html` | `python src/design_alternatives.py` |
+
+`fetch.py` is the only step that needs a network connection. Everything below
+it works offline from the cached JSON.
+
+---
+
+## Libraries
+
+Declared in `pyproject.toml`, mirrored in `requirements.txt`. Every package
+listed is either imported by `src/` or required at runtime by something that
+is — nothing is carried "just in case".
+
+The brief asks for at least one visualisation library listed on
+[PyViz.org](https://pyviz.org/); four of the packages below are
+(**holoviews**, **geoviews**, **panel**, **bokeh**), marked ✓.
+
+| Package | PyViz | Imported by | What it does here |
+|---|:---:|---|---|
+| `pandas` | | every module | Every table in the project. Reshaping, grouping, rolling windows, parquet I/O. |
+| `requests` | | `fetch.py` | The paginated calls to the PortWatch ArcGIS service. |
+| `holoviews` | ✓ | `charts.py`, `app.py`, `design_alternatives.py` | Every chart object. `Curve`, `Area`, `HeatMap`, `Scatter`, `Segments`, plus `Area.stack` for the composition chart and the `VLine`/`HLine`/`Text` annotations. |
+| `geoviews` | ✓ | `charts.py` | The world map: the basemap tile layer and the chokepoint points, projected correctly. |
+| `cartopy` | | `charts.py` | One line — `ccrs.PlateCarree()`, which tells geoviews the points are plain latitude/longitude so it can project them onto web-mercator tiles. |
+| `panel` | ✓ | `app.py` | The dashboard itself: template, sidebar widgets, `Tabulator` table, `@pn.cache`, and the server behind `panel serve`. |
+| `pyarrow` | | *not imported* | pandas uses it as the engine behind `read_parquet` / `to_parquet`. Required, but never called by our code. |
+| `bokeh` | ✓ | *not imported* | The renderer holoviews draws through, selected by `hv.extension("bokeh")`. It supplies the pan, zoom, hover and box-select tools. |
+
+### What is deliberately *not* here
+
+- **`hvplot`** — the usual companion to this stack, and a dependency in early
+  drafts. It is a convenience wrapper for making charts straight off a
+  dataframe, and every view here needs layered annotations, custom hover
+  formatting and explicit colour assignment, so each one is built from
+  holoviews elements directly. Carrying a dependency nothing imports would be
+  the kind of inconsistency this README exists to avoid, so it was dropped.
+- **`numpy`** — present transitively through pandas, but not imported. The one
+  place it was used, square-rooting the map's circle sizes, is a HoloViews
+  `dim` expression (`dim("ships") ** 0.5`) evaluated inside the plot.
+- **`datashader`** — the standard answer to overplotting in this stack, and
+  unnecessary at this size. 80,528 rows render instantly; adding it to look
+  sophisticated would be an unjustified choice.
+
 ---
 
 ## Data preparation
 
-Carried out in `prepare.py`, with every check written to `docs/data_quality.md`:
+Carried out in `prepare.py`, with the analytical measures built on top in
+`metrics.py`. Every check below is written to `docs/data_quality.md` as the
+pipeline runs, so the report is generated evidence rather than a claim:
 
 - **Dates parsed in UTC and cross-checked** against the independent
   `year`/`month`/`day` columns. The naive conversion uses the local timezone and

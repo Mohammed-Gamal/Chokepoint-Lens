@@ -372,9 +372,11 @@ regional conflict began. 2020 and 2021 are deliberately excluded: the pandemic
 collapse, the shipping boom and the Ever Given grounding would all make
 "normal" meaningless.
 
-**RQ1** How did traffic redistribute during the Red Sea crisis, and how complete
-is the recovery? &nbsp;·&nbsp; **RQ2** Which vessel segments left first, and which
-came back? &nbsp;·&nbsp; **RQ3** Does canal traffic reach Egypt's ports?
+**RQ1:** How did traffic redistribute during the Red Sea crisis, and how complete
+is the recovery?  
+**RQ2:** Which vessel segments left first, and which
+came back?  
+**RQ3:** Does canal traffic reach Egypt's ports?
 
 *Source: [IMF PortWatch](https://portwatch.imf.org/) (IMF / University of Oxford),
 from UN Global Platform AIS data.*
