@@ -1,11 +1,13 @@
 # Chokepoint Lens
 
 **Visualization and Visual Analytics — project work**
-**Author:** Elfadel Mohamed · **Date:** November 2026
 
 An interactive dashboard for reading daily ship traffic through the world's
 maritime chokepoints against a **seasonal baseline** — what was normal for that
 waterway on that calendar day — with the Suez Canal as its subject.
+
+**Author:** Elfadel Mohamed  
+**Date:** November 2026
 
 ---
 
