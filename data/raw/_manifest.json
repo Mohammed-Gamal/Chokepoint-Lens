@@ -1,0 +1,34 @@
+{
+  "source": "IMF PortWatch (International Monetary Fund / University of Oxford), derived from UN Global Platform AIS satellite data. https://portwatch.imf.org/",
+  "service": "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services",
+  "layers": {
+    "chokepoints_meta": {
+      "layer_path": "PortWatch_chokepoints_database/FeatureServer/0",
+      "where": "1=1",
+      "rows": 28,
+      "file": "chokepoints_meta.json",
+      "retrieved_utc": "2026-11-20 21:26:54Z"
+    },
+    "chokepoints_daily": {
+      "layer_path": "Daily_Chokepoints_Data/FeatureServer/0",
+      "where": "1=1",
+      "rows": 80528,
+      "file": "chokepoints_daily.json",
+      "retrieved_utc": "2026-11-20 21:27:34Z"
+    },
+    "ports_meta": {
+      "layer_path": "PortWatch_ports_database/FeatureServer/0",
+      "where": "1=1",
+      "rows": 2071,
+      "file": "ports_meta.json",
+      "retrieved_utc": "2026-11-20 21:27:35Z"
+    },
+    "ports_daily": {
+      "layer_path": "Daily_Ports_Data/FeatureServer/0",
+      "where": "country='Egypt'",
+      "rows": 37362,
+      "file": "ports_daily_egypt.json",
+      "retrieved_utc": "2026-11-20 21:28:58Z"
+    }
+  }
+}

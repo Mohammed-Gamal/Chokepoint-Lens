@@ -1,0 +1,19 @@
+# Raw API downloads are large and can be re-created with src/fetch.py
+data/raw/*.json
+
+# ...but the provenance manifest is small and must be kept: it records
+# which layers were downloaded, with what filter, and on what date. The
+# PortWatch service revises recent days, so without this there is no way
+# to say which version of the data a result came from.
+!data/raw/_manifest.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Editors
+.vscode/
+.idea/
