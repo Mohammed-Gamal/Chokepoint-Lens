@@ -1,13 +1,11 @@
 # Chokepoint Lens
 
 **Visualization and Visual Analytics — project work**
+**Author:** Elfadel Mohamed · **Date:** November 2026
 
 An interactive dashboard for reading daily ship traffic through the world's
 maritime chokepoints against a **seasonal baseline** — what was normal for that
 waterway on that calendar day — with the Suez Canal as its subject.
-
-**Author:** Elfadel Mohamed  
-**Date:** November 2026
 
 ---
 
@@ -32,7 +30,7 @@ ordinary seasonal noise.
 - **RQ2** — Which vessel segments and cargo types abandoned the canal first, and
   which returned first?
 - **RQ3** — Does canal transit volume translate into activity at Egyptian ports,
-  or do the two decouple? *(data downloaded; view not yet built)*
+  or do the two decouple?
 
 ---
 
@@ -84,7 +82,8 @@ uv run panel serve src/app.py --show    # launch the dashboard
 To look at the charts without running the server:
 
 ```bash
-uv run python src/charts.py             # writes docs/preview.html
+uv run python src/charts.py              # writes docs/preview.html
+uv run python src/design_alternatives.py # writes docs/mockups/alternatives.html
 ```
 
 That file has BokehJS embedded, so it opens with no internet connection. Only
@@ -96,18 +95,21 @@ the map tiles need a network.
 
 ```
 src/
-├── fetch.py     paginated ArcGIS client; caches raw JSON + writes the manifest
-├── prepare.py   dates, type conversion, validation, derived columns, QC report
-├── metrics.py   seasonal baseline, deviation, substitution ratio, period table
-├── charts.py    one function per view, each returning a HoloViews object
-└── app.py       Panel layout, widgets, and the linked interactions
+├── fetch.py        paginated ArcGIS client; caches raw JSON + writes the manifest
+├── prepare.py      dates, type conversion, validation, derived columns, QC report
+├── metrics.py      seasonal baseline, deviation, substitution ratio, period table
+├── charts.py       one function per view, each returning a HoloViews object
+├── app.py          Panel layout, widgets, and the linked interactions
+└── design_alternatives.py   rebuilds the rejected designs for comparison
 
 data/raw/        downloaded JSON (gitignored, except the manifest)
 data/processed/  cleaned parquet tables
 docs/
-├── data_quality.md   auto-generated: provenance + every check performed
-├── preview.html      all views in one standalone file
-└── mockups/          rejected design alternatives
+├── data_quality.md     auto-generated: provenance + every check performed
+├── design-rationale.md why the dashboard looks the way it does
+├── preview.html        all views in one standalone file
+└── mockups/
+    └── alternatives.html   each rejected design beside what replaced it
 ```
 
 Charts are plain functions returning objects, so the same code runs in a
@@ -140,6 +142,14 @@ Carried out in `prepare.py`, with every check written to `docs/data_quality.md`:
   from it, and the Suez/Cape substitution ratio.
 - **Reshaped** from one row per day into a long table of one row per
   day-per-vessel-type, which is the shape charts want.
+- **Egyptian ports given the same treatment**, plus two things specific to
+  them. A **role category** per port — canal gateway, Mediterranean trade, oil
+  and gas terminal, Red Sea other — assigned by position relative to the canal
+  and listed in `prepare.py` so it can be disputed. And an **activity flag**:
+  Ras Gharib and Ras Shukheir record *no calls at all* across 2,874 days, while
+  Zeit Bay and the Egyptian LNG Terminal average under 0.1 a day. All four are
+  flagged inactive and excluded from the comparison, because a percentage
+  change on three ships a year is noise dressed as a finding.
 
 ### Why the baseline starts in 2022
 
@@ -177,6 +187,17 @@ Against the seasonal baseline, averaged by period:
    fell from 45,757 in 2023 to 35,876 in 2025, a 22% drop. At the Cape it did
    not move at all (61,960 → 63,738). The Cape was already carrying large
    vessels and absorbed more of them; Suez is left with a smaller class.
+4. **The canal's loss did not reach Egypt's ports — they decoupled.** This is
+   the answer to RQ3, and it is the opposite of the obvious hypothesis. While
+   canal transits ran at about 60% of their pre-crisis normal, Egyptian port
+   calls ran at roughly 118% and seaborne tonnage at 130–165%. Only one active
+   port, As Suways, fell at all (−22%); Alexandria rose 23% in calls and 49% in
+   tonnage, El Sokhna 86% and 55%. Egypt's national seaborne trade went from
+   157 Mt in 2023 to 189 Mt in 2024 and stayed there.
+
+   The policy reading: the crisis cost Egypt **transit revenue**, not seaborne
+   trade. Those are different line items with different remedies, and a
+   dashboard that showed only canal transits would have implied otherwise.
 
 ---
 

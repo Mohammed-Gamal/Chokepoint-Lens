@@ -1,21 +1,36 @@
 # Design alternatives
 
-This folder holds the layouts that were **rejected**, not the one that shipped.
+The designs that were built and then rejected.
 
-Keeping them is not sentimentality. The assessment criteria grade the *design
-process*, and a finished dashboard on its own is evidence of a design, not of a
-process. Two or three sketches with a line on why each one failed is the
-clearest proof that the final layout was chosen rather than stumbled into.
+**`alternatives.html`** holds each one beside the version that replaced it.
+It is generated, not drawn, so the comparison can be re-rendered and checked
+rather than taken on trust:
 
-What to put here:
+```bash
+uv run python src/design_alternatives.py
+```
 
-- Rough sketches — paper photographed on a phone is completely fine, and reads
-  as more honest than a polished mockup made after the fact.
-- For each one, a sentence on what it got wrong. For example: *"map and timeline
-  side by side — the map needs width to separate the Atlantic chokepoints, and
-  the timeline needs width to resolve 2,876 days, so neither got enough"*.
-- The design requirements those failures led to. That is the useful output: the
-  rejected sketches are the working, the requirements are the conclusion.
+Three decisions are shown:
 
-Three sketches and three sentences is enough. The point is to show the reasoning,
-not to produce another deliverable.
+| | Rejected | Chosen |
+|---|---|---|
+| **A** | one flat pre-crisis average as "normal" | a seasonal baseline, per calendar day |
+| **B** | a baseline band behind all three routes at once | bare comparison view; the band gets its own panel |
+| **C** | canal transits and port tonnage on one raw axis | each series rebased so its own normal is 100 |
+
+The written argument — what each alternative got wrong, and what the chosen
+version cost in exchange — is in **`../design-rationale.md`**.
+
+---
+
+## Adding your own
+
+Anything you sketched on paper before writing code belongs here too, and is
+worth more than these rendered comparisons, not less: it shows the thinking
+that happened *before* there was anything to render. A phone photo of a
+napkin is fine, and reads as more honest than a polished mockup made after
+the fact.
+
+For each one, a sentence on what it got wrong is enough. The rejected
+sketches are the working; the design requirements they led to are the
+conclusion, and the conclusion is the part that earns the marks.

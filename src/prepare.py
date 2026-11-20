@@ -64,7 +64,7 @@ DOCS_DIR = PROJECT_ROOT / "docs"
 # *aggregates* of these, not extra categories -- adding them in would
 # double-count, which is an easy mistake to make with this dataset.
 VESSEL_TYPES = ["container", "dry_bulk", "general_cargo", "roro", "tanker"]
-CARGO_TYPES  = ["container", "dry_bulk", "general_cargo", "roro"]  # everything but tankers
+CARGO_TYPES = ["container", "dry_bulk", "general_cargo", "roro"]  # everything but tankers
 
 # Collected as we go, then written to docs/data_quality.md
 notes: list[str] = []
@@ -307,6 +307,130 @@ def to_long(df: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------
+# Egyptian ports (RQ3)
+# --------------------------------------------------------------------------
+
+# A manually assigned role per port. This is a *derived category*: it is not
+# in the data, it comes from where each port sits relative to the canal, and
+# it is the lens RQ3 is asked through. Stated explicitly here rather than
+# buried in a chart so it can be argued with.
+#
+#   Canal gateway      at or beside the canal's two mouths -- these are the
+#                      ports a transiting ship could plausibly call at
+#   Mediterranean trade  Egypt's main domestic import/export ports, ~220 km
+#                      west of the canal and not on a transit route
+#   Oil & gas terminal  loading terminals, driven by energy exports rather
+#                      than by passing container traffic
+#   Red Sea other      everything else on the Red Sea coast
+PORT_ROLES: dict[str, str] = {
+    "Port Said": "Canal gateway",
+    "Damietta": "Canal gateway",
+    "As Suways": "Canal gateway",
+    "Al Adabiyah": "Canal gateway",
+    "El Sokhna": "Canal gateway",
+    "Alexandria": "Mediterranean trade",
+    "El Dekheila": "Mediterranean trade",
+    "Sidi Kerir": "Oil & gas terminal",
+    "Ras Gharib": "Oil & gas terminal",
+    "Zeit Bay": "Oil & gas terminal",
+    "Ras Shukheir": "Oil & gas terminal",
+    "Egyptian LNG Terminal": "Oil & gas terminal",
+    "Safaga": "Red Sea other",
+}
+
+# Below this many calls per day on average, a port is too quiet for a
+# percentage change to mean anything: one extra ship in a year reads as a
+# triple-digit swing. Flagged rather than deleted, and excluded from the
+# comparison chart with a note on the page.
+MIN_DAILY_CALLS = 0.1
+
+PORT_MEASURES = ["portcalls", "import", "export"]
+
+
+def check_port_identities(df: pd.DataFrame, quiet: bool = False) -> None:
+    """Same arithmetic verification as the chokepoints, on the port columns."""
+    for prefix in PORT_MEASURES:
+        parts = df[[f"{prefix}_{t}" for t in CARGO_TYPES]].sum(axis=1)
+        tolerance = 0 if prefix == "portcalls" else 10
+        for label, left, right in [
+            (f"{prefix}_cargo = sum of 4 cargo types", df[f"{prefix}_cargo"], parts),
+            (f"{prefix} = {prefix}_cargo + {prefix}_tanker",
+             df[prefix], df[f"{prefix}_cargo"] + df[f"{prefix}_tanker"]),
+        ]:
+            gap = (left - right).abs()
+            bad = int((gap > tolerance).sum())
+            if bad:
+                log(f"- WARNING: ports, {label} fails on {bad:,} rows "
+                    f"(worst gap {gap.max():,.1f}).", quiet)
+            else:
+                log(f"- Identity holds (ports): {label} "
+                    f"(worst gap {gap.max():,.1f}, tolerance {tolerance}).", quiet)
+
+
+def prepare_ports(quiet: bool = False) -> pd.DataFrame | None:
+    """
+    Clean the Egyptian port data that RQ3 needs.
+
+    Same treatment as the chokepoints -- dates verified, arithmetic checked,
+    completeness measured -- plus two things specific to this table: a role
+    category per port, and an activity flag, because several of these ports
+    barely operate and a percentage change on three ships a year is noise
+    dressed as a finding.
+    """
+    try:
+        raw = load_raw("ports_daily_egypt")
+    except FileNotFoundError:
+        log("- Ports: no download found; skipping RQ3 "
+            "(run `python src/fetch.py ports_daily --country Egypt`).", quiet)
+        return None
+
+    log(f"- Ports: {len(raw):,} raw daily rows for Egypt.", quiet)
+
+    df = parse_dates(raw, quiet)
+    df = df.drop(columns=[c for c in ["ObjectId"] if c in df.columns])
+
+    check_port_identities(df, quiet)
+
+    dupes = int(df.duplicated(subset=["portid", "date"]).sum())
+    log(f"- Ports: {dupes:,} duplicate portid+date rows." if dupes
+        else "- Ports: no duplicate portid+date rows.", quiet)
+
+    # Total seaborne trade through the port, and the balance of it.
+    df["trade"] = df["import"] + df["export"]
+    df["net_export"] = df["export"] - df["import"]
+
+    # Activity: judged over the whole period, not per row.
+    activity = df.groupby("portname", observed=True)["portcalls"].mean()
+    df["mean_daily_calls"] = df["portname"].map(activity)
+    df["is_active"] = df["mean_daily_calls"] >= MIN_DAILY_CALLS
+
+    dormant = sorted(activity[activity == 0].index)
+    quiet_ports = sorted(activity[(activity > 0) & (activity < MIN_DAILY_CALLS)].index)
+    if dormant:
+        log(f"- Ports: {len(dormant)} with NO recorded calls in the whole period "
+            f"({', '.join(dormant)}). Kept but marked inactive.", quiet)
+    if quiet_ports:
+        log(f"- Ports: {len(quiet_ports)} below {MIN_DAILY_CALLS} calls/day "
+            f"({', '.join(quiet_ports)}). Marked inactive: percentage changes on "
+            "numbers this small are not meaningful.", quiet)
+    log(f"- Ports: {int(df['is_active'].groupby(df['portname']).first().sum())} of "
+        f"{df['portname'].nunique()} ports carry enough traffic to analyse.", quiet)
+
+    # The derived category RQ3 is read through.
+    df["role"] = df["portname"].map(PORT_ROLES)
+    missing = sorted(set(df.loc[df["role"].isna(), "portname"]))
+    if missing:
+        log(f"- WARNING: ports with no role assigned: {', '.join(missing)}", quiet)
+        df["role"] = df["role"].fillna("Unclassified")
+
+    df = df.sort_values(["portname", "date"]).reset_index(drop=True)
+    out = PROCESSED_DIR / "ports_daily.parquet"
+    df.to_parquet(out, index=False)
+    log(f"- Saved ports table: {out.name} ({len(df):,} rows, {len(df.columns)} columns).", quiet)
+    return df
+
+
 def _provenance_lines() -> list[str]:
     """
     Pull the source details out of the manifest fetch.py wrote.
@@ -420,6 +544,9 @@ def main() -> int:
     long_path = PROCESSED_DIR / "chokepoints_long.parquet"
     long.to_parquet(long_path, index=False)
     log(f"- Saved long table: {long_path.name} ({len(long):,} rows).", quiet)
+
+    # ---- Egyptian ports (RQ3) ----
+    prepare_ports(quiet)
 
     report = write_report(df)
     if not quiet:

@@ -290,6 +290,99 @@ def period_table(
 
 
 # --------------------------------------------------------------------------
+# 5. Canal versus Egypt's ports  (RQ3)
+# --------------------------------------------------------------------------
+
+
+def port_change_table(
+    ports: pd.DataFrame,
+    baseline: tuple[str, str] = (REFERENCE_START, REFERENCE_END),
+    since: str = "2024-07-01",
+    active_only: bool = True,
+) -> pd.DataFrame:
+    """
+    Per Egyptian port: average activity before the crisis, average since, and
+    the change between them -- in both ship calls and tonnage.
+
+    Both measures, because they can disagree and the disagreement is the
+    finding. A port can take fewer ships while moving more cargo, which says
+    the ships calling there got bigger, not that the port got quieter.
+    """
+    data = ports[ports["is_active"]] if active_only else ports
+    before = data[(data["date"] >= baseline[0]) & (data["date"] <= baseline[1])]
+    after = data[data["date"] >= pd.Timestamp(since)]
+
+    rows = []
+    for name, group in data.groupby("portname", observed=True):
+        b = before[before["portname"] == name]
+        a = after[after["portname"] == name]
+        if b.empty or a.empty:
+            continue
+        calls_b, calls_a = b["portcalls"].mean(), a["portcalls"].mean()
+        trade_b, trade_a = b["trade"].mean(), a["trade"].mean()
+        rows.append(
+            {
+                "portname": name,
+                "role": group["role"].iloc[0],
+                "calls_before": calls_b,
+                "calls_after": calls_a,
+                "calls_change": (calls_a / calls_b - 1) if calls_b else float("nan"),
+                "trade_before": trade_b,
+                "trade_after": trade_a,
+                "trade_change": (trade_a / trade_b - 1) if trade_b else float("nan"),
+            }
+        )
+    table = pd.DataFrame(rows)
+    return table.sort_values("calls_change").reset_index(drop=True)
+
+
+def canal_vs_ports(
+    metrics: pd.DataFrame,
+    ports: pd.DataFrame,
+    route: str = "Suez Canal",
+    baseline: tuple[str, str] = (REFERENCE_START, REFERENCE_END),
+    active_only: bool = True,
+) -> pd.DataFrame:
+    """
+    Three monthly series on one scale: canal transits, Egyptian port calls,
+    and Egyptian seaborne tonnage -- each indexed so that its own pre-crisis
+    average equals 100.
+
+    Indexing is what makes this one chart instead of three. Transits, calls
+    and tonnes have nothing in common as units, and putting them on separate
+    y-axes would invite the reader to read the crossings as meaningful when
+    they would be an artefact of axis placement. Rebased to a common 100,
+    they are directly comparable and a single axis is honest.
+    """
+    canal = metrics[metrics["portname"] == route]
+    active = ports[ports["is_active"]] if active_only else ports
+
+    monthly = {
+        "Canal transits": canal.set_index("date")["n_total"].resample("MS").mean(),
+        "Egyptian port calls": active.groupby("date")["portcalls"].sum().resample("MS").mean(),
+        "Egyptian trade (tonnes)": active.groupby("date")["trade"].sum().resample("MS").mean(),
+    }
+
+    frames = []
+    start, end = pd.Timestamp(baseline[0]), pd.Timestamp(baseline[1])
+    for label, series in monthly.items():
+        reference = series[(series.index >= start) & (series.index <= end)].mean()
+        if not reference:
+            continue
+        frames.append(
+            pd.DataFrame(
+                {
+                    "date": series.index,
+                    "series": label,
+                    "value": series.to_numpy(),
+                    "index": series.to_numpy() / reference * 100,
+                }
+            )
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
+# --------------------------------------------------------------------------
 # Build everything
 # --------------------------------------------------------------------------
 
@@ -324,6 +417,25 @@ def build(verbose: bool = True) -> pd.DataFrame:
     ratio.to_parquet(ratio_out, index=False)
     if verbose:
         print(f"saved {ratio_out.name} ({len(ratio):,} rows)")
+
+    # ---- RQ3: the canal against Egypt's own ports ----
+    ports_path = PROCESSED_DIR / "ports_daily.parquet"
+    if ports_path.exists():
+        ports = pd.read_parquet(ports_path)
+
+        changes = port_change_table(ports)
+        changes_out = PROCESSED_DIR / "port_changes.parquet"
+        changes.to_parquet(changes_out, index=False)
+
+        divergence = canal_vs_ports(df, ports)
+        divergence_out = PROCESSED_DIR / "canal_vs_ports.parquet"
+        divergence.to_parquet(divergence_out, index=False)
+
+        if verbose:
+            print(f"saved {changes_out.name} ({len(changes)} active ports)")
+            print(f"saved {divergence_out.name} ({len(divergence):,} rows)")
+    elif verbose:
+        print("ports_daily.parquet not found - skipping RQ3 measures")
 
     return df
 

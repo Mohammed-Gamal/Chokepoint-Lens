@@ -74,12 +74,20 @@ def load_everything() -> dict[str, pd.DataFrame]:
     80,528 rows from disk, and the dashboard would feel sluggish for no
     reason. With it, interaction is instant.
     """
-    return {
+    tables = {
         "metrics": charts.load("chokepoints_metrics"),
         "meta": charts.load("chokepoints_meta"),
         "long": charts.load("chokepoints_long"),
         "ratio": charts.load("suez_substitution"),
     }
+    # RQ3 tables are optional: the dashboard still works without them, it
+    # just hides that section rather than crashing on a missing file.
+    for name in ("ports_daily", "port_changes", "canal_vs_ports"):
+        try:
+            tables[name] = charts.load(name)
+        except FileNotFoundError:
+            tables[name] = None
+    return tables
 
 
 DATA = load_everything()
@@ -87,6 +95,10 @@ METRICS = DATA["metrics"]
 META = DATA["meta"]
 LONG = DATA["long"]
 RATIO = DATA["ratio"]
+PORTS = DATA["ports_daily"]
+PORT_CHANGES = DATA["port_changes"]
+DIVERGENCE = DATA["canal_vs_ports"]
+HAS_PORTS = PORT_CHANGES is not None and DIVERGENCE is not None
 
 ALL_ROUTES = sorted(METRICS["portname"].unique())
 FIRST_DAY = METRICS["date"].min().to_pydatetime()
@@ -199,6 +211,30 @@ def view_substitution(span):
     if data.empty:
         return pn.pane.Alert("No data in that date range.", alert_type="light")
     return charts.substitution_curve(data, height=320)
+
+
+def view_divergence(span):
+    """RQ3: canal and ports on one indexed scale."""
+    data = _window(DIVERGENCE, span)
+    if data.empty:
+        return pn.pane.Alert("No data in that date range.", alert_type="light")
+    return charts.canal_vs_ports_chart(data, height=330)
+
+
+def view_port_changes():
+    """
+    RQ3: each Egyptian port against the canal's own change.
+
+    Not filtered by the date slider on purpose. This chart compares two
+    fixed windows -- the pre-crisis baseline and everything since mid-2024 --
+    and letting the slider cut into either of them would quietly change what
+    the percentages mean while leaving the title saying otherwise.
+    """
+    return charts.port_change_dumbbell(
+        PORT_CHANGES,
+        canal_change=charts.canal_change_vs_baseline(METRICS),
+        height=360,
+    )
 
 
 def view_table(route, span):
@@ -392,6 +428,33 @@ main = pn.Column(
     heading("The numbers", "search and sort the underlying daily data"),
     pn.panel(pn.bind(view_table, focus_route, date_range)),
 )
+
+if HAS_PORTS:
+    main.extend(
+        [
+            pn.layout.Divider(),
+            heading(
+                "Does the canal's loss reach Egypt's ports?",
+                "RQ3 — 9 active Egyptian ports against the canal's own change",
+            ),
+            pn.pane.Markdown(
+                "The three lines below are rebased so each one's own pre-crisis "
+                "average equals 100, which is what lets transits, port calls and "
+                "tonnes share a single axis honestly. If canal traffic drove port "
+                "activity, they would move together.",
+                styles={"font-size": "14px", "color": charts.INK_MUTED},
+            ),
+            pn.panel(pn.bind(view_divergence, date_range)),
+            pn.panel(view_port_changes),
+            pn.pane.Markdown(
+                f"<span style='font-size:12px;color:{charts.INK_MUTED}'>"
+                "Four of Egypt's 13 ports are left out: Ras Gharib and Ras Shukheir "
+                "record no calls at all across the whole period, and Zeit Bay and the "
+                "Egyptian LNG Terminal average under 0.1 calls a day, where one extra "
+                "ship in a year reads as a triple-digit swing.</span>"
+            ),
+        ]
+    )
 
 template = pn.template.FastListTemplate(
     title="Chokepoint Lens — Suez Canal traffic against its seasonal normal",

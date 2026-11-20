@@ -580,8 +580,180 @@ def substitution_curve(
 
 
 # --------------------------------------------------------------------------
+# View 5: the canal against Egypt's own ports  (RQ3)
+# --------------------------------------------------------------------------
+
+MEASURE_COLOURS = {"calls": SERIES[0], "trade": SERIES[3]}
+
+
+def canal_vs_ports_chart(
+    divergence: pd.DataFrame,
+    width: int | None = None,
+    height: int = 320,
+):
+    """
+    Canal transits, Egyptian port calls and Egyptian tonnage on one scale.
+
+    Each series is rebased so its own pre-crisis average equals 100. That
+    rebasing is what makes this a single chart rather than three: transits,
+    port calls and tonnes share no unit, and giving them separate y-axes
+    would let the reader read the crossings as meaningful when they would
+    be an artefact of where the axes were placed. Indexed to a common 100,
+    one axis is both honest and directly comparable.
+
+    The 100 line is the whole point. A series above it is running ahead of
+    its own pre-crisis normal; below it, behind. If the canal and the ports
+    were coupled, the three lines would move together.
+    """
+    colours = {
+        "Canal transits": SERIES[0],
+        "Egyptian port calls": SERIES[1],
+        "Egyptian trade (tonnes)": SERIES[2],
+    }
+
+    layers = [
+        hv.HLine(100).opts(color=INK_MUTED, line_dash="dashed", line_width=1.5)
+    ]
+    for label, colour in colours.items():
+        one = divergence[divergence["series"] == label].sort_values("date")
+        if one.empty:
+            continue
+        layers.append(
+            hv.Curve(one, "date", "index", label=label).opts(
+                color=colour,
+                line_width=2,
+                tools=["hover"],
+                hover_tooltips=[
+                    ("Month", "@date{%b %Y}"),
+                    (label, "@index{0.0} (100 = pre-crisis normal)"),
+                ],
+                hover_formatters={"@date": "datetime"},
+            )
+        )
+
+    for when in EVENTS.values():
+        moment = pd.Timestamp(when)
+        if divergence["date"].min() <= moment <= divergence["date"].max():
+            layers.append(
+                hv.VLine(moment).opts(color=INK_MUTED, line_dash="dotted", line_width=1.5)
+            )
+
+    return hv.Overlay(layers).opts(
+        **_sizing(width, height),
+        show_grid=True,
+        legend_position="right",
+        title="Canal traffic vs Egypt's ports, each indexed to its own pre-crisis normal",
+        ylabel="index (pre-crisis = 100)",
+        xlabel="",
+        shared_axes=False,
+    )
+
+
+def port_change_dumbbell(
+    changes: pd.DataFrame,
+    canal_change: float | None = None,
+    width: int | None = None,
+    height: int = 340,
+):
+    """
+    One row per Egyptian port: how its ship calls and its cargo tonnage
+    changed, with the canal's own change drawn as a reference line.
+
+    A dumbbell rather than two bar charts, because the *gap* between the two
+    dots is the interesting quantity. A port whose calls fell while tonnage
+    rose is not getting quieter -- it is handling bigger ships. Two separate
+    bar charts would hide exactly that, since the reader would have to hold
+    one chart in memory while reading the other.
+
+    The dashed canal line is what turns this from a list into an argument:
+    if Egypt's ports simply followed the canal, the dots would cluster on
+    it. Where they sit instead is the answer to RQ3.
+    """
+    table = changes.dropna(subset=["calls_change", "trade_change"]).copy()
+    if table.empty:
+        raise ValueError("no ports with both measures available")
+
+    table = table.sort_values("calls_change").reset_index(drop=True)
+    # Most negative at the top, so the chart reads as a ranking downwards.
+    table["y"] = range(len(table) - 1, -1, -1)
+    table["y2"] = table["y"]
+    table["calls_pct"] = table["calls_change"] * 100
+    table["trade_pct"] = table["trade_change"] * 100
+    table["label"] = table["trade_pct"].map(lambda v: f"{v:+.0f}%")
+
+    yticks = [(int(row.y), row.portname) for row in table.itertuples(index=False)]
+    span = [table["calls_pct"].min(), table["trade_pct"].min(),
+            table["calls_pct"].max(), table["trade_pct"].max()]
+    if canal_change is not None:
+        span.append(canal_change * 100)
+    pad = (max(span) - min(span)) * 0.18 or 10
+
+    connector = hv.Segments(table, ["calls_pct", "y", "trade_pct", "y2"]).opts(
+        color=AXIS, line_width=3
+    )
+    zero = hv.VLine(0).opts(color=INK_MUTED, line_width=1.5)
+
+    layers = [zero, connector]
+
+    if canal_change is not None:
+        canal_pct = canal_change * 100
+        layers.append(
+            hv.VLine(canal_pct).opts(color=SERIES[7], line_dash="dashed", line_width=2)
+        )
+        layers.append(
+            hv.Text(
+                canal_pct, len(table) - 0.4, f"  Suez Canal {canal_pct:+.0f}%",
+                halign="left", fontsize=10,
+            ).opts(color=SERIES[7])
+        )
+
+    layers.append(
+        hv.Scatter(table, "calls_pct", ["y", "portname", "role"], label="Ship calls").opts(
+            color=MEASURE_COLOURS["calls"],
+            size=11,
+            line_color=SURFACE,
+            line_width=1.5,
+            tools=["hover"],
+            hover_tooltips=[("Port", "@portname"), ("Role", "@role"),
+                            ("Change in calls", "@calls_pct{+0.0}%")],
+        )
+    )
+    layers.append(
+        hv.Scatter(table, "trade_pct", ["y", "portname", "role"], label="Cargo tonnes").opts(
+            color=MEASURE_COLOURS["trade"],
+            size=11,
+            line_color=SURFACE,
+            line_width=1.5,
+            tools=["hover"],
+            hover_tooltips=[("Port", "@portname"), ("Role", "@role"),
+                            ("Change in tonnage", "@trade_pct{+0.0}%")],
+        )
+    )
+
+    return hv.Overlay(layers).opts(
+        **_sizing(width, height),
+        yticks=yticks,
+        ylim=(-0.8, len(table) - 0.2),
+        xlim=(min(span) - pad, max(span) + pad),
+        show_grid=True,
+        legend_position="bottom",
+        title="Egyptian ports since mid-2024, against the 2022–23 baseline",
+        xlabel="% change",
+        ylabel="",
+        shared_axes=False,
+    )
+
+
+# --------------------------------------------------------------------------
 # Preview
 # --------------------------------------------------------------------------
+
+
+def canal_change_vs_baseline(metrics: pd.DataFrame, route: str = "Suez Canal") -> float:
+    """The canal's own change from baseline, for the dumbbell's reference line."""
+    table = period_table(metrics, columns=["n_total"], chokepoints=[route])
+    latest = table.iloc[-1]
+    return float(latest["n_total_vs_baseline"])
 
 
 def build_preview() -> Path:
@@ -602,6 +774,10 @@ def build_preview() -> Path:
          composition_area(long_df, "Suez Canal", width=820)),
         ("4. Period comparison (RQ1/RQ2)", period_heatmap(metrics, width=560)),
         ("5. Substitution ratio", substitution_curve(ratio, width=820)),
+        ("6. Canal vs Egypt's ports (RQ3)",
+         canal_vs_ports_chart(load("canal_vs_ports"), width=820)),
+        ("7. Egyptian ports, port by port (RQ3)",
+         port_change_dumbbell(load("port_changes"), canal_change=canal_change_vs_baseline(metrics), width=820)),
     ]
 
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
