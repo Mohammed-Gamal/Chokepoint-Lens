@@ -165,21 +165,6 @@ The brief asks for at least one visualisation library listed on
 | `pyarrow` | | *not imported* | pandas uses it as the engine behind `read_parquet` / `to_parquet`. Required, but never called by our code. |
 | `bokeh` | ✓ | *not imported* | The renderer holoviews draws through, selected by `hv.extension("bokeh")`. It supplies the pan, zoom, hover and box-select tools. |
 
-### What is deliberately *not* here
-
-- **`hvplot`** — the usual companion to this stack, and a dependency in early
-  drafts. It is a convenience wrapper for making charts straight off a
-  dataframe, and every view here needs layered annotations, custom hover
-  formatting and explicit colour assignment, so each one is built from
-  holoviews elements directly. Carrying a dependency nothing imports would be
-  the kind of inconsistency this README exists to avoid, so it was dropped.
-- **`numpy`** — present transitively through pandas, but not imported. The one
-  place it was used, square-rooting the map's circle sizes, is a HoloViews
-  `dim` expression (`dim("ships") ** 0.5`) evaluated inside the plot.
-- **`datashader`** — the standard answer to overplotting in this stack, and
-  unnecessary at this size. 80,528 rows render instantly; adding it to look
-  sophisticated would be an unjustified choice.
-
 ---
 
 ## Data preparation
