@@ -70,7 +70,13 @@ LAYERS: dict[str, str] = {
 }
 
 PAGE_SIZE = 1000  # the server's own limit
-TIMEOUT = 90  # seconds per request
+
+# Seconds to wait before giving up on a single request. This is a CEILING,
+# not a target: a request that finishes in 5 seconds finishes in 5 seconds
+# whatever this is set to. Lowering it does not speed anything up, it only
+# decides how early a slow query fails. Override with --timeout if a layer
+# is being stubborn.
+TIMEOUT = 120
 RETRIES = 3
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -179,6 +185,56 @@ def discover() -> None:
     )
 
 
+def port_ids_for_country(country: str) -> list[str]:
+    """
+    Look up one country's port IDs in the metadata we already downloaded.
+
+    Used to avoid a slow query rather than to save a request. See
+    query_layer_per_port below for why that matters.
+    """
+    path = RAW_DIR / "ports_meta.json"
+    if not path.exists():
+        return []
+    try:
+        records = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    wanted = country.strip().lower()
+    return sorted(
+        r["portid"]
+        for r in records
+        if r.get("portid") and wanted in str(r.get("country", "")).lower()
+    )
+
+
+def query_layer_per_port(port_ids: list[str], layer: str = "ports_daily") -> list[dict]:
+    """
+    Fetch one port at a time instead of filtering the whole table by country.
+
+    Why this is dramatically faster, and not just tidier:
+
+    Daily_Ports_Data holds roughly five million rows -- every one of the
+    2,071 ports across every day since 2019. Asking for `country='Egypt'`
+    makes the server compare a text field across all of them, and because
+    we page with resultOffset it repeats that scan on every request and
+    then skips the rows it already returned. Page 30 therefore does far
+    more work than page 1, and the last pages are where it times out.
+
+    Querying `portid='port23'` instead hits the layer's own key, and each
+    port is only ~2,874 rows, which is three pages. No deep offsets, no
+    full-table text scan, and a failure costs one small port rather than
+    the whole download.
+    """
+    records: list[dict] = []
+    for position, port_id in enumerate(port_ids, start=1):
+        print(f"    [{position}/{len(port_ids)}] {port_id}")
+        try:
+            records.extend(query_layer(layer, where=f"portid='{port_id}'"))
+        except Exception as exc:  # noqa: BLE001
+            print(f"      skipped {port_id}: {exc}", file=sys.stderr)
+    return records
+
+
 def record_provenance(layer: str, where: str, records: list[dict], path: Path) -> None:
     """
     Write down what was downloaded, from exactly where, and when.
@@ -231,6 +287,10 @@ def save_raw(layer: str, records: list[dict], suffix: str = "") -> Path:
 
 
 def main() -> int:
+    # Declared up front: Python requires the global statement before the
+    # name is read anywhere in the function, and --timeout's default reads it.
+    global TIMEOUT
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "layer",
@@ -241,7 +301,15 @@ def main() -> int:
     parser.add_argument("--discover", action="store_true", help="ask the server what layers really exist")
     parser.add_argument("--where", default=None, help="SQL filter, e.g. \"portid='chokepoint1'\"")
     parser.add_argument("--country", default=None, help="shorthand for --where \"country='<name>'\"")
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=TIMEOUT,
+        help=f"seconds to wait per request before giving up (default {TIMEOUT}). "
+             "Raise it if a layer times out; lowering it does not make anything faster.",
+    )
     args = parser.parse_args()
+    TIMEOUT = args.timeout
 
     if args.discover:
         discover()
@@ -259,23 +327,45 @@ def main() -> int:
         where = f"country='{args.country}'"
         suffix = f"_{args.country.lower().replace(' ', '_')}"
 
+    # Each job is (layer, where clause, filename suffix, country or None).
+    # The country is carried separately so the port layer can be fetched one
+    # port at a time instead of by a slow country-wide filter.
     if args.layer == "all":
         jobs = [
-            ("chokepoints_meta", "1=1", ""),
-            ("chokepoints_daily", "1=1", ""),
-            ("ports_meta", "1=1", ""),
-            ("ports_daily", "country='Egypt'", "_egypt"),
+            ("chokepoints_meta", "1=1", "", None),
+            ("chokepoints_daily", "1=1", "", None),
+            ("ports_meta", "1=1", "", None),
+            ("ports_daily", "country='Egypt'", "_egypt", "Egypt"),
         ]
     else:
-        jobs = [(args.layer, where or "1=1", suffix)]
+        jobs = [(args.layer, where or "1=1", suffix, args.country)]
 
-    for layer, layer_where, layer_suffix in jobs:
+    for layer, layer_where, layer_suffix, country in jobs:
         print(f"\n{layer}  (where: {layer_where})")
+
+        # The daily port layer is ~5 million rows, so a country filter makes
+        # the server scan the lot on every page. If we already know which
+        # ports belong to the country, ask for them one at a time instead.
+        port_ids = (
+            port_ids_for_country(country)
+            if country and layer == "ports_daily"
+            else []
+        )
+
         try:
-            records = query_layer(layer, where=layer_where)
+            if port_ids:
+                print(f"    {len(port_ids)} {country} ports found in ports_meta; "
+                      "fetching one at a time to avoid a full-table scan")
+                records = query_layer_per_port(port_ids, layer)
+            else:
+                if country and layer == "ports_daily":
+                    print("    ports_meta.json not available, falling back to the "
+                          "country filter (slower; raise --timeout if it stalls)")
+                records = query_layer(layer, where=layer_where)
         except Exception as exc:  # noqa: BLE001
             print(f"    FAILED: {exc}", file=sys.stderr)
             continue
+
         if records:
             path = save_raw(layer, records, layer_suffix)
             record_provenance(layer, layer_where, records, path)
